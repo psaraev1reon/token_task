@@ -44,13 +44,13 @@ function Api() {
 		};
 	};
 
-	const requestAccessToken = () => {
+	const requestAccessToken = (authCode) => {
 		return axios
 			.post(`${ROOT_PATH}/oauth2/access_token`, {
 				client_id: config.CLIENT_ID,
 				client_secret: config.CLIENT_SECRET,
 				grant_type: "authorization_code",
-				code: config.AUTH_CODE,
+				code: authCode,
 				redirect_uri: config.REDIRECT_URI,
 			})
 			.then((res) => {
@@ -63,7 +63,7 @@ function Api() {
 			});
 	};
 
-	const getAccessToken = async () => {
+	const getAccessToken = async (authCode) => {
 		if (access_token) {
 			return Promise.resolve(access_token);
 		}
@@ -76,7 +76,7 @@ function Api() {
 		} catch (error) {
 			logger.error(`Ошибка при чтении файла ${AMO_TOKEN_PATH}`, error);
 			logger.debug("Попытка заново получить токен");
-			const token = await requestAccessToken();
+			const token = await requestAccessToken(authCode);
 			fs.writeFileSync(AMO_TOKEN_PATH, JSON.stringify(token));
 			access_token = token.access_token;
 			refresh_token = token.refresh_token;
@@ -108,6 +108,10 @@ function Api() {
 	};
 
 	this.getAccessToken = getAccessToken;
+	this.deleteToken = () => {
+		fs.unlinkSync(AMO_TOKEN_PATH);
+	};
+
 	// Получить сделку по id
 	this.getDeal = authChecker((id, withParam = []) => {
 		return axios
@@ -215,6 +219,31 @@ function Api() {
 	this.createTasks = authChecker((data) => {
 		const tasksData = [].concat(data);
 		return axios.post(`${ROOT_PATH}/api/v4/tasks`, tasksData, {
+			headers: {
+				Authorization: `Bearer ${access_token}`,
+			},
+		});
+	});
+
+	// Получить задачи по фильтрам
+	this.getTasks = authChecker((entity_id, task_type_id) => {
+		const url = `${ROOT_PATH}/api/v4/tasks?filter[entity_id][]=${entity_id}&filter[task_type][]=${task_type_id}`;
+
+		return axios
+			.get(url, {
+				headers: {
+					Authorization: `Bearer ${access_token}`,
+				},
+			})
+			.then((res) => {
+				return res.data ? res.data._embedded.tasks : [];
+			});
+	});
+
+	// Создать примечание
+	this.createNotes = authChecker((data) => {
+		const notesData = [].concat(data);
+		return axios.post(`${ROOT_PATH}/api/v4/leads/notes`, notesData, {
 			headers: {
 				Authorization: `Bearer ${access_token}`,
 			},
